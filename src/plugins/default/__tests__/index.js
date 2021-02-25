@@ -1,9 +1,8 @@
+/* eslint-disable no-unused-expressions */
+import { before, describe, it } from 'mocha';
 import chai, { expect } from 'chai';
 import { countOccurences, runSSHCommand } from '../../../utils';
-import { describe, it } from 'mocha';
-
 import chaiString from 'chai-string';
-/* eslint-disable max-len, no-unused-expressions */
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -15,11 +14,19 @@ sh.config.silent = false;
 const servers = require('../../../../tests/fixtures/servers');
 
 describe('module - default', function() {
-  this.timeout(600000);
+  this.timeout(900000);
 
-  describe('deploy', function() {
+  before(async () => {
+    const serverInfo = servers.mymeteor;
+    await runSSHCommand(
+      serverInfo,
+      'sudo docker rm -f $(sudo docker ps -a -q)'
+    );
+  });
+
+  describe('deploy', () => {
     it('should deploy meteor app on "meteor" vm', async () => {
-      const serverInfo = servers['mymeteor'];
+      const serverInfo = servers.mymeteor;
       sh.cd(path.resolve(os.tmpdir(), 'tests/project-1'));
       sh.exec('mup setup');
 
@@ -27,11 +34,18 @@ describe('module - default', function() {
 
       expect(out.code).to.equal(0);
       expect(
-        countOccurences('Building App Bundle Locally', out.output)
-      ).to.be.equal(1);
+        out.output
+      ).satisfy(text => {
+        if (text.indexOf('Building App Bundle Locally') > -1) {
+          return true;
+        }
+
+        return text.indexOf('Using build from previous deploy at') > -1;
+      });
+
       expect(
         countOccurences(
-          'Pushing Meteor App Bundle to The Server: SUCCESS',
+          'Pushing Meteor App Bundle to the Server: SUCCESS',
           out.output
         )
       ).to.be.equal(1);
@@ -60,7 +74,7 @@ describe('module - default', function() {
     });
   });
 
-  describe('init', function() {
+  describe('init', () => {
     it('should create "mup.js" and "setting.json" in /tmp/project-tmp', () => {
       const dir = path.resolve(os.tmpdir(), 'project-tmp');
       sh.mkdir(dir);
@@ -72,7 +86,7 @@ describe('module - default', function() {
     });
   });
 
-  describe('logs', function() {
+  describe('logs', () => {
     it('should pull the logs from meteor app', () => {
       sh.cd(path.resolve(os.tmpdir(), 'tests/project-1'));
       const out = sh.exec('mup logs --tail 2');
@@ -80,9 +94,9 @@ describe('module - default', function() {
     });
   });
 
-  describe('reconfig', function() {
+  describe('reconfig', () => {
     it('should reconfig meteor app on "meteor" vm', async () => {
-      const serverInfo = servers['mymeteor'];
+      const serverInfo = servers.mymeteor;
       sh.cd(path.resolve(os.tmpdir(), 'tests/project-1'));
       sh.exec('mup setup  && mup deploy --cached-build');
 
@@ -104,9 +118,9 @@ describe('module - default', function() {
     });
   });
 
-  describe('restart', function() {
+  describe('restart', () => {
     it('should restart meteor app on "meteor" vm', async () => {
-      const serverInfo = servers['mymeteor'];
+      const serverInfo = servers.mymeteor;
       sh.cd(path.resolve(os.tmpdir(), 'tests/project-1'));
       sh.exec('mup setup  && mup deploy --cached-build');
 
@@ -124,9 +138,9 @@ describe('module - default', function() {
     });
   });
 
-  describe('setup', function() {
+  describe('setup', () => {
     it('should setup "meteor" vm', async () => {
-      const serverInfo = servers['mymeteor'];
+      const serverInfo = servers.mymeteor;
       sh.cd(path.resolve(os.tmpdir(), 'tests/project-1'));
 
       const out = sh.exec('mup setup');
@@ -147,9 +161,9 @@ describe('module - default', function() {
     });
   });
 
-  describe('start', function() {
+  describe('start', () => {
     it('should start meteor app on "meteor" vm', async () => {
-      const serverInfo = servers['mymeteor'];
+      const serverInfo = servers.mymeteor;
       sh.cd(path.resolve(os.tmpdir(), 'tests/project-1'));
       sh.exec('mup setup  && mup meteor push --cached-build && mup meteor envconfig');
 
@@ -168,9 +182,9 @@ describe('module - default', function() {
     });
   });
 
-  describe('stop', function() {
+  describe('stop', () => {
     it('should stop meteor app on "meteor" vm', async () => {
-      const serverInfo = servers['mymeteor'];
+      const serverInfo = servers.mymeteor;
       sh.cd(path.resolve(os.tmpdir(), 'tests/project-1'));
       sh.exec('mup setup  && mup deploy --cached-build');
 
@@ -186,10 +200,10 @@ describe('module - default', function() {
     });
   });
 
-  describe('syslog', function() {
-    const serverInfo = servers['mymeteor'];
+  describe('syslog', () => {
+    const serverInfo = servers.mymeteor;
 
-    it('should write meteor logst to syslog on "meteor" vm', async () => {
+    it('should write meteor logs to syslog on "meteor" vm', async () => {
       sh.cd(path.resolve(os.tmpdir(), 'tests/project-2'));
 
       sh.exec('mup setup && mup deploy --cached-build');
@@ -197,10 +211,10 @@ describe('module - default', function() {
         serverInfo,
         'sudo tail -n 100 /var/log/syslog'
       );
-      expect(out.code).to.be.equal(0);
 
+      expect(out.code).to.be.equal(0);
       expect(
-        countOccurences('=> Starting meteor app on port:80', out.output)
+        countOccurences('=> Starting meteor app on port 3000', out.output)
       ).gte(1);
     });
   });

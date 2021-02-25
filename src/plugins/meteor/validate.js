@@ -1,17 +1,19 @@
-import joi from 'joi';
+import joi from '@hapi/joi';
 
 const schema = joi.object().keys({
   name: joi.string().min(1).required(),
   path: joi.string().min(1).required(),
   port: joi.number(),
   type: joi.string(),
-  servers: joi.object().required().pattern(
+  servers: joi.object().min(1).required().pattern(
     /[/s/S]*/,
     joi.object().keys({
       env: joi.object().pattern(
         /[/s/S]*/,
         [joi.string(), joi.number(), joi.bool()]
-      )
+      ),
+      bind: joi.string(),
+      settings: joi.string()
     })
   ),
   deployCheckWaitTime: joi.number(),
@@ -25,6 +27,10 @@ const schema = joi.object().keys({
     args: joi.array().items(joi.string()),
     bind: joi.string().trim(),
     prepareBundle: joi.bool(),
+    prepareBundleLocally: joi.bool(),
+    buildInstructions: joi.array().items(joi.string()),
+    stopAppDuringPrepareBundle: joi.bool(),
+    useBuildKit: joi.bool(),
     networks: joi
       .array()
       .items(joi.string())
@@ -81,9 +87,16 @@ const schema = joi.object().keys({
 
 export default function(
   config,
-  { combineErrorDetails, VALIDATE_OPTIONS, serversExist, addLocation }
+  {
+    addDepreciation,
+    combineErrorDetails,
+    VALIDATE_OPTIONS,
+    serversExist,
+    addLocation
+  }
 ) {
   let details = [];
+
   details = combineErrorDetails(
     details,
     joi.validate(config.app, schema, VALIDATE_OPTIONS)
@@ -108,6 +121,34 @@ export default function(
     details,
     serversExist(config.servers, config.app.servers)
   );
+
+  // Depreciations
+  if (config.app.ssl) {
+    details = addDepreciation(
+      details,
+      'ssl',
+      'Use the reverse proxy instead',
+      'https://git.io/vN5tn'
+    );
+  }
+
+  if (config.app.nginx) {
+    details = addDepreciation(
+      details,
+      'nginx',
+      'Use the reverse proxy instead',
+      'https://git.io/vN5tn'
+    );
+  }
+
+  if (config.app.docker && config.app.docker.imageFrontendServer) {
+    details = addDepreciation(
+      details,
+      'docker.imageFrontendServer',
+      'Use the reverse proxy instead',
+      'https://git.io/vN5tn'
+    );
+  }
 
   return addLocation(details, config.meteor ? 'meteor' : 'app');
 }

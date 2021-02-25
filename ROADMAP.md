@@ -2,15 +2,7 @@ These are the main improvements prioritized to be worked on in the short to medi
 
 We accept pull requests and contributions for features not listed here, but the contributers will propritize their time for reviewing PR's that help implement features that are part of the roadmap.
  
-## Reverse Proxy 
- 
-Started in 1.2.9. 
-
-The implementations for custom certificates and Let's Encrypt is very different, and some features only support with one or the other, and each has it's own limitations.
-
-The reverse proxy will use the same implementation for both. It will also support multiple apps on the server, and be more customizable, including using custom nginx configs.
- 
-## Docker Swarm 
+## Docker Swarm
 
 Docker Swarm will be used in the implementations for features for using multiple servers, including load balancing, rolling deploys, handling servers going down, and allowing the built-in databases to work with multiple servers.
 
@@ -32,6 +24,8 @@ View realtime metrics from the mup cli, such as disk, ram, cpu, and network usag
 
 Commands to download a backup of the database, restore from a backup, and access the MongoDB shell will be added. We will also add support for the oplog, and custom mongo configs.
 
+https://github.com/zodern/meteor-up/blob/master/docs/docs.md#backup-and-restore
+
 ## Faster bundle upload
 
 Mup can use rsync to only upload the parts of the bundle that changed, making subsequent deploys faster. Will only be enabled when `rsync` is available, so on Windows it will fall back to uploading the whole bundle.
@@ -48,4 +42,16 @@ Since 1.3, it's been possible to create plugins to deploy non-meteor apps. We wi
 
 ## Troubleshooting
 
+Started in 1.4.
+
 There are a handful of errors that are very common, such as a port already being used. `mup` could look at the output from failed tasks, and offer suggestions, There also can be a troubleshooting command to automate finding and sometimes even fixing problems.
+
+# Finished
+
+## Reverse Proxy 
+ 
+Started in 1.2.9. Finished in 1.4. 
+
+The implementations for custom certificates and Let's Encrypt is very different, and some features only support with one or the other, and each has it's own limitations.
+
+The reverse proxy will use the same implementation for both. It will also support multiple apps on the server, and be more customizable, including using custom nginx configs.

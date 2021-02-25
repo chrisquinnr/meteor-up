@@ -4,37 +4,59 @@ set -e
 
 APP_DIR=/opt/<%= appName %>
 APPNAME=<%= appName %>
-START_SCRIPT=$APP_DIR/config/start.sh
-IMAGE=mup-<%= appName.toLowerCase() %>
+IMAGE_PREFIX=<%- imagePrefix %>
+IMAGE=$IMAGE_PREFIX'<%= appName.toLowerCase() %>'
+USE_BUILDKIT=<%= useBuildKit ? 1 : 0 %>
 
 build_failed() {
-  sudo docker start $APPNAME || true
+  <% if (stopApp) { %>
+  sudo docker start $APPNAME >/dev/null 2>&1 || true
+  <% } %>
   exit 2
 }
 
+echo "Updating base image"
 set +e
 sudo docker pull <%= dockerImage %>
 set -e
 
-sudo docker stop $APPNAME || true
+<% if (stopApp) { %>
+sudo docker stop $APPNAME >/dev/null 2>&1 || true
+<% } %>
 
 cd $APP_DIR/tmp
 
 sudo rm -rf bundle
-sudo tar -xzf bundle.tar.gz
-sudo chmod 777 ./ -R
-echo "Finished Extracting"
+
+echo "Preparing for docker build"
+mkdir bundle
+<% if (useBuildKit) { %>
+  cp ./bundle.tar.gz ./bundle/bundle.tar.gz
+<% } else { %>
+  sudo tar -xzf bundle.tar.gz
+  sudo chmod 777 ./ -R
+<% } %>
+
 cd bundle
 
 echo "Creating Dockerfile"
-sudo cat <<EOT > Dockerfile
+sudo cat <<"EOT" > Dockerfile
+# syntax=docker/dockerfile:1-experimental
 FROM <%= dockerImage %>
-RUN mkdir /built_app
-COPY ./ /built_app
+RUN mkdir /built_app || true
 <% for(var key in env) { %>
-ENV <%- key %>=<%- env[key] %>
+ARG <%- key %>="<%- env[key] %>"
 <% } %>
-RUN cd  /built_app/programs/server && \
+<% for(var instruction in buildInstructions) { %>
+<%-  buildInstructions[instruction] %>
+<% } %> 
+
+<% if (useBuildKit) { %>
+RUN --mount=type=bind,target=/tmp/__mup-bundle tar -xzf /tmp/__mup-bundle/bundle.tar.gz -C /built_app --strip-components=1 && ls /built_app
+<% } else { %>
+COPY ./ /built_app
+<% } %>
+RUN cd /built_app/programs/server && \
     npm install --unsafe-perm
 EOT
 
@@ -44,12 +66,37 @@ sudo chmod 777 ./Dockerfile
 
 echo "Building image"
 
-sudo docker build -t $IMAGE:build . || build_failed
+time sudo DOCKER_BUILDKIT=$USE_BUILDKIT docker build \
+  -t $IMAGE:build \
+  --build-arg "NODE_VERSION=<%- nodeVersion %>" \
+  . || build_failed
 
 sudo rm -rf bundle
 
-sudo docker start $APPNAME || true
+<% if (stopApp) { %>
+sudo docker start $APPNAME >/dev/null 2>&1 || true
+<% } %>
 
 sudo docker tag $IMAGE:latest $IMAGE:previous || true
-sudo docker tag $IMAGE:build $IMAGE:latest
-sudo docker image prune -f
+sudo docker tag $IMAGE:build $IMAGE:<%= tag %>
+
+<% if (privateRegistry) { %>
+  echo "Pushing images to private registry"
+  # Fails if the previous tag doesn't exist (such as during the initial deploy)
+  sudo docker push $IMAGE:previous || true
+
+  sudo docker push $IMAGE:latest
+  
+<% } %>
+
+echo "Tagged <%= tag %>"
+
+# Can fail if multiple Prepare Bundle apps are run concurrently for different apps
+sudo docker image prune -f || true
+
+<% if (useBuildKit) { %>
+# Pruning buildkit cache doesn't keep cache entries used for local
+# images, so we keep 2GB of cache, which should be enough for most
+# apps to reuse cache from previous builds
+sudo docker builder prune --keep-storage 2gb --force
+<% } %>

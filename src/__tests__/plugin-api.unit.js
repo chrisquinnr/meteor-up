@@ -1,11 +1,11 @@
-import { expect } from 'chai';
-import PluginAPI from '../plugin-api';
-import path from 'path';
-import sinon from 'sinon';
-import fs from 'fs';
 import * as validate from '../validate';
 import { commands } from '../commands';
+import { expect } from 'chai';
+import fs from 'fs';
 import { hooks } from '../hooks';
+import path from 'path';
+import PluginAPI from '../plugin-api';
+import sinon from 'sinon';
 
 describe('PluginAPI', () => {
   let api;
@@ -34,6 +34,7 @@ describe('PluginAPI', () => {
   describe('base', () => {
     it('should prefer config path', () => {
       const _api = new PluginAPI(base, filteredArgs, { config: '~/project2/.deploy/mup.js' });
+
       expect(_api.base).to.equal('~/project2/.deploy');
     });
 
@@ -45,6 +46,9 @@ describe('PluginAPI', () => {
   describe('properties', () => {
     it('should have "program"', () => {
       expect(api).has.property('program');
+    });
+    it('should have "commandHistory"', () => {
+      expect(api).has.property('commandHistory');
     });
   });
   describe('utils', () => {
@@ -90,25 +94,21 @@ describe('PluginAPI', () => {
     let configStub;
 
     beforeEach(() => {
-      fsStub = sinon.stub(fs, 'readFileSync').callsFake(() => {
-        return {
-          toString() {
-            return `
+      fsStub = sinon.stub(fs, 'readFileSync').callsFake(() => ({
+        toString() {
+          return `
             package1@3
             package2@3
             #package3@3
             `;
-          }
-        };
-      });
+        }
+      }));
 
-      configStub = sinon.stub(api, 'getConfig').callsFake(() => {
-        return {
-          meteor: {
-            path: '../'
-          }
-        };
-      });
+      configStub = sinon.stub(api, 'getConfig').callsFake(() => ({
+        meteor: {
+          path: '../'
+        }
+      }));
     });
 
     afterEach(() => {
@@ -131,10 +131,11 @@ describe('PluginAPI', () => {
   });
 
   describe('validateConfig', () => {
-    let errors = ['error1', 'error2'];
+    const errors = { errors: ['error1', 'error2'], depreciations: [] };
     let validatorStub;
     let totalConsoleOutput = '';
     let consoleStub;
+
     beforeEach(() => {
       totalConsoleOutput = '';
       validatorStub = sinon.stub(validate, 'default').returns(errors);
@@ -150,13 +151,15 @@ describe('PluginAPI', () => {
 
     it('should show validation errors', () => {
       api.validateConfig(api.configPath);
+      consoleStub.restore();
 
       expect(totalConsoleOutput).to.contain('- error1');
       expect(totalConsoleOutput).to.contain('- error2');
     });
 
     it('should show nothing when config is valid', () => {
-      errors.splice(0, errors.length);
+      errors.errors = [];
+      errors.depreciations = [];
 
       api.validateConfig(api.configPath);
 
@@ -166,7 +169,7 @@ describe('PluginAPI', () => {
 
   describe('_normalizeConfig', () => {
     it('should copy meteor object to app', () => {
-      const expected = { meteor: { path: '../' }, app: { type: 'meteor', path: '../', docker: { image: 'kadirahq/meteord' } } };
+      const expected = { meteor: { path: '../' }, app: { type: 'meteor', path: '../', docker: { image: 'kadirahq/meteord', imagePort: 3000, stopAppDuringPrepareBundle: true } } };
       const config = { meteor: { path: '../' } };
       const result = api._normalizeConfig(config);
 
@@ -177,6 +180,7 @@ describe('PluginAPI', () => {
   describe('setConfig', () => {
     it('should update the old config', () => {
       const newConfig = { servers: { two: 0 } };
+
       api.setConfig(newConfig);
 
       expect(api.getConfig()).to.deep.equal(newConfig);
@@ -241,15 +245,22 @@ describe('PluginAPI', () => {
         expect(preHookCalled).to.equal(true);
         expect(postHookCalled).to.equal(true);
         cb();
-      }).catch(e => {
-        console.log(e);
-      });
+      })
+        .catch(e => {
+          console.log(e);
+        });
+    });
+
+    it('should update commandHistory', () => {
+      api.runCommand('test.logs');
+      expect(api.commandHistory).to.deep.equal([{name: 'test.logs'}]);
     });
   });
 
   describe('getSessions', () => {
     it('should return sessions for plugins', () => {
       const sessions = api.getSessions(['meteor', 'mongo']);
+
       expect(sessions).to.have.length(2);
     });
   });
@@ -264,6 +275,7 @@ describe('PluginAPI', () => {
   describe('_pickSessions', () => {
     it('should return sessions for each plugin', () => {
       const result = api._pickSessions(['meteor', 'mongo']);
+
       expect(result).to.have.keys('one', 'two');
     });
   });

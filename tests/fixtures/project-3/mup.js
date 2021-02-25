@@ -15,11 +15,11 @@ module.exports = {
 
     env: {
       ROOT_URL: 'http://' + servers.mymeteor.host + '.com',
-      MONGO_URL: 'mongodb://' + servers.mymongo.host + '/meteor'
+      MONGO_URL: 'mongodb://mongodb:27017/meteor'
     },
 
     docker: {
-      image: 'abernix/meteord:base'
+      image: 'zodern/meteor'
     },
 
     deployCheckWaitTime: 300

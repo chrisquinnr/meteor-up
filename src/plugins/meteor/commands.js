@@ -1,11 +1,11 @@
 import * as commandHandlers from './command-handlers';
 
-export let setup = {
+export const setup = {
   description: 'Prepare server to deploy meteor apps',
   handler: commandHandlers.setup
 };
 
-export let deploy = {
+export const deploy = {
   description: 'Deploy meteor apps',
   builder(subYargs) {
     return subYargs.option('cached-build', {
@@ -16,7 +16,18 @@ export let deploy = {
   handler: commandHandlers.deploy
 };
 
-export let logs = {
+export const destroy = {
+  description: 'Stop and completely remove app from server',
+  handler: commandHandlers.destroy,
+  builder(subYargs) {
+    return subYargs.option('force', {
+      description: 'forces app to be removed',
+      boolean: true
+    });
+  }
+};
+
+export const logs = {
   description: 'View meteor app\'s logs',
   builder(yargs) {
     return yargs
@@ -35,19 +46,39 @@ export let logs = {
   handler: commandHandlers.logs
 };
 
-export let start = {
+export const start = {
   description: 'Start meteor app',
   handler: commandHandlers.start
 };
 
-export let stop = {
+export const stop = {
   description: 'Stop meteor app',
   handler: commandHandlers.stop
 };
 
-export let restart = {
+export const restart = {
   description: 'Restart meteor app',
   handler: commandHandlers.restart
+};
+
+export const status = {
+  description: 'View the app\'s status',
+  handler: commandHandlers.status,
+  builder(yargs) {
+    return yargs.option('overview', {
+      description: 'Simplified report to quickly see the status of each component',
+      bool: true
+    });
+  }
+};
+
+export const debug = {
+  name: 'debug [server]',
+  description: 'Debug the meteor app',
+  builder(yargs) {
+    yargs.strict(false);
+  },
+  handler: commandHandlers.debugApp
 };
 
 // Hidden commands

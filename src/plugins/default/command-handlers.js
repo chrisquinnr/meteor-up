@@ -1,54 +1,12 @@
-import debug from 'debug';
-import fs from 'fs';
-import sh from 'shelljs';
+import chalk from 'chalk';
 import { Client } from 'ssh2';
+import debug from 'debug';
+import { map } from 'bluebird';
 
 const log = debug('mup:module:default');
 
-sh.config.silent = true;
-
 export function deploy() {
   log('exec => mup deploy');
-}
-
-export function init(api) {
-  log('exec => mup init');
-
-  const mupJs = api.resolvePath(__dirname, 'template/mup.js.sample');
-  const settinsJson = api.resolvePath(__dirname, 'template/settings.json');
-  const mupJsDst = api.resolvePath(process.cwd(), 'mup.js');
-
-  const settingsJsonDst = api.resolvePath(process.cwd(), 'settings.json');
-  const mupJsExists = fs.existsSync(mupJsDst);
-  const settingsJsonExist = fs.existsSync(settingsJsonDst);
-
-  if (!settingsJsonExist) {
-    sh.cp(settinsJson, settingsJsonDst);
-    console.log('Created settings.json');
-  } else {
-    console.log('Skipping creation of settings.json.');
-    console.log(`settings.json already exist at ${settingsJsonDst}.`);
-  }
-
-  if (!mupJsExists) {
-    sh.cp(mupJs, mupJsDst);
-
-    console.log('Created mup.js');
-    console.log('');
-    console.log('Next Steps:');
-    console.log('');
-    console.log('  Open mup.js and edit the config to meet your needs.');
-    console.log('  Required changes have been marked with a TODO comment.');
-    console.log('');
-    console.log('  Available options can be found in the docs at');
-    console.log('    https://github.com/zodern/meteor-up');
-    console.log('');
-    console.log('  Then, run the command:');
-    console.log('    mup setup');
-  } else {
-    console.log('Skipping creation of mup.js');
-    console.log(`mup.js already exists at ${mupJsDst}`);
-  }
 }
 
 export function logs() {
@@ -64,7 +22,7 @@ export function restart() {
 }
 
 export function setup(api) {
-  process.on('exit', function displayNextSteps(code) {
+  process.on('exit', code => {
     if (code > 0) {
       return;
     }
@@ -75,13 +33,8 @@ export function setup(api) {
   });
 
   log('exec => mup setup');
-  const config = api.getConfig();
-  return api.runCommand('docker.setup')
-    .then(() => {
-      if (config.proxy) {
-        return api.runCommand('proxy.setup');
-      }
-    });
+
+  return api.runCommand('docker.setup');
 }
 
 export function start() {
@@ -94,23 +47,38 @@ export function stop() {
 
 export function ssh(api) {
   const servers = api.getConfig().servers;
-  const serverOption = api.getArgs()[1];
+  let serverOption = api.getArgs()[1];
+
+  // Check how many sessions are enabled. Usually is all servers,
+  // but can be reduced by the `--servers` option
+  const enabledSessions = api.getSessionsForServers(Object.keys(servers))
+    .filter(session => session);
 
   if (!(serverOption in servers)) {
-    console.log('mup ssh <server>');
-    console.log('Available servers are:\n', Object.keys(servers).join('\n'));
-    process.exitCode = 1;
-    return;
+    if (enabledSessions.length === 1) {
+      const selectedHost = enabledSessions[0]._host;
+      serverOption = Object.keys(servers).find(
+        name => servers[name].host === selectedHost
+      );
+    } else {
+      console.log('mup ssh <server>');
+      console.log('Available servers are:\n', Object.keys(servers).join('\n '));
+      process.exitCode = 1;
+
+      return;
+    }
   }
 
   const server = servers[serverOption];
   const sshOptions = api._createSSHOptions(server);
 
-  var conn = new Client();
-  conn.on('ready', function() {
-    conn.shell(function(err, stream) {
-      if (err) { throw err; }
-      stream.on('close', function() {
+  const conn = new Client();
+  conn.on('ready', () => {
+    conn.shell((err, stream) => {
+      if (err) {
+        throw err;
+      }
+      stream.on('close', () => {
         conn.end();
         process.exit();
       });
@@ -133,9 +101,10 @@ export function validate(api) {
   // Shows validation errors
   api.getConfig();
 
-  if (api.getOptions()['show']) {
+  if (api.getOptions().show || api.getOptions().scrub) {
     let config = api.getConfig();
-    if (api.getOptions()['scrub']) {
+
+    if (api.getOptions().scrub) {
       config = api.scrubConfig();
     }
     console.log(JSON.stringify(config, null, 2));
@@ -144,5 +113,92 @@ export function validate(api) {
   const errors = api.validateConfig('');
   if (errors.length > 0) {
     process.exitCode = 1;
+  } else {
+    console.log(chalk.green('\u2713 Config is valid'));
   }
+}
+
+function statusColor(
+  versionCorrect,
+  distributionCorrect,
+  hasAptGet,
+  defaultBash,
+  _overallColor
+) {
+  let color = chalk.green;
+  let overallColor = _overallColor;
+
+  if (!hasAptGet) {
+    color = chalk.red;
+    overallColor = 'red';
+  } else if (!distributionCorrect) {
+    color = chalk.yellow;
+    if (overallColor !== 'red') {
+      overallColor = 'yellow';
+    }
+  } else if (!versionCorrect) {
+    color = chalk.red;
+    overallColor = 'red';
+  } else if (!defaultBash) {
+    color = chalk.red;
+    overallColor = 'red';
+  }
+
+  return {
+    color,
+    overallColor
+  };
+}
+
+export async function status(api) {
+  const servers = Object.values(api.getConfig().servers);
+  const lines = [];
+  let overallColor = 'green';
+  const command = 'lsb_release -r -s || echo "false"; lsb_release -is; apt-get -v &> /dev/null && echo "true" || echo "false"; echo $BASH';
+  const results = await map(
+    servers,
+    server => api.runSSHCommand(server, command),
+    { concurrency: 2 }
+  );
+
+  results.forEach(({ host, output }) => {
+    let text = `  - ${host}: `;
+    let color = chalk.green;
+    const [
+      version,
+      distribution,
+      aptGet,
+      bash = ''
+    ] = output.trim().split('\n');
+
+    const versionCorrect = parseInt(version, 10) > 13;
+    const distributionCorrect = distribution === 'Ubuntu';
+    const hasAptGet = aptGet.trim() === 'true';
+    const defaultBash = bash.trim().length > 0;
+
+    const colors = statusColor(
+      versionCorrect,
+      distributionCorrect,
+      hasAptGet,
+      defaultBash,
+      overallColor
+    );
+
+    color = colors.color;
+    overallColor = colors.overallColor;
+
+    text += color(`${distribution} ${version}`);
+    if (!hasAptGet) {
+      text += chalk.red(' apt-get not available');
+    }
+
+    if (!defaultBash) {
+      text += chalk.red(' Bash is not the default shell');
+    }
+
+    lines.push(text);
+  });
+
+  console.log(chalk[overallColor]('=> Servers'));
+  console.log(lines.join('\n'));
 }

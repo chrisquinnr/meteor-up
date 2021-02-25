@@ -1,23 +1,35 @@
-import { expect } from 'chai';
 import validate, { _pluginValidators, addPluginValidator } from '../index';
+import { expect } from 'chai';
 
-describe('validator', function() {
+describe('validator', () => {
   beforeEach(() => {
     for (const prop of Object.keys(_pluginValidators)) {
       delete _pluginValidators[prop];
     }
   });
 
-  describe('addPluginValidator', function() {
-    it('should add validator', function() {
+  describe('addPluginValidator', () => {
+    it('should add validator', () => {
       const handler = () => { };
+
       addPluginValidator('metrics', handler);
-      expect(_pluginValidators['metrics']).to.equal(handler);
+      expect(_pluginValidators.metrics[0]).to.equal(handler);
+    });
+
+    it('should add multiple validators', () => {
+      const handler = () => { };
+      const handler2 = () => { };
+
+      addPluginValidator('metrics', handler);
+      addPluginValidator('metrics', handler2);
+
+      expect(_pluginValidators.metrics[0]).to.equal(handler);
+      expect(_pluginValidators.metrics[1]).to.equal(handler2);
     });
   });
 
-  describe('validate', function() {
-    it('should validate the config', function() {
+  describe('validate', () => {
+    it('should validate the config', () => {
       const config = {
         servers: {
           one: {
@@ -26,15 +38,16 @@ describe('validator', function() {
         }
       };
 
-      let errors;
+      let problems;
 
       try {
-        errors = validate(config);
+        problems = validate(config);
       } catch (e) {
         console.log(e);
       }
       // console.log(errors);
-      expect(errors).instanceOf(Array);
+      expect(problems.errors).instanceOf(Array);
+      expect(problems.depreciations).instanceOf(Array);
     });
   });
 });

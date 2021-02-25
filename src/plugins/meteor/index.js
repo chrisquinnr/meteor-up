@@ -1,79 +1,79 @@
 import * as _commands from './commands';
 import _validator from './validate';
+import { defaultsDeep } from 'lodash';
 import traverse from 'traverse';
 
 export const description = 'Deploy and manage meteor apps';
 
-export let commands = _commands;
+export const commands = _commands;
 
 export const validate = {
   meteor: _validator,
   app(config, utils) {
     if (typeof config.meteor === 'object' || (config.app && config.app.type !== 'meteor')) {
       // The meteor validator will check the config
-      // Or the config is telling a different app to handle deployment
+      // Or the config is telling a different plugin to handle deployment
       return [];
     }
+
     return _validator(config, utils);
   }
 };
 
 export function prepareConfig(config) {
-  if (!config.app) {
+  if (!config.app || config.app.type !== 'meteor') {
     return config;
   }
 
-  config.app.docker = config.app.docker || {};
-  config.app.docker.image = config.app.docker.image || config.app.dockerImage || 'kadirahq/meteord';
+  config.app.docker = defaultsDeep(config.app.docker, {
+    image: config.app.dockerImage || 'kadirahq/meteord',
+    stopAppDuringPrepareBundle: true
+  });
+
   delete config.app.dockerImage;
+
+  // If imagePort is not set, use port 3000 to simplify using
+  // images that run the app with a non-root user.
+  // Port 80 was the traditional port used by kadirahq/meteord
+  // and meteorhacks/meteord, but they allow the PORT env
+  // variable to override it.
+  config.app.docker.imagePort = config.app.docker.imagePort || 3000;
+
   return config;
 }
 
 function meteorEnabled(api) {
   const config = api.getConfig();
-  if (config.app && config.app.type === 'meteor') {
-    return true;
-  }
-  return false;
+
+  return config.app && config.app.type === 'meteor';
 }
 
-export let hooks = {
-  'post.default.setup'(api) {
-    if (meteorEnabled(api)) {
-      return api.runCommand('meteor.setup');
+function onlyMeteorEnabled(...commandNames) {
+  return function(api) {
+    let index = 0;
+
+    function thenHandler() {
+      index += 1;
+      if (commandNames.length > index) {
+        return api.runCommand(commandNames[index]).then(thenHandler);
+      }
     }
-  },
-  'post.default.deploy'(api) {
+
     if (meteorEnabled(api)) {
-      return api.runCommand('meteor.deploy');
+      return api.runCommand(commandNames[index]).then(thenHandler);
     }
-  },
-  'post.default.start'(api) {
-    if (meteorEnabled(api)) {
-      return api.runCommand('meteor.start');
-    }
-  },
-  'post.default.stop'(api) {
-    if (meteorEnabled(api)) {
-      return api.runCommand('meteor.stop');
-    }
-  },
-  'post.default.logs'(api) {
-    if (meteorEnabled(api)) {
-      return api.runCommand('meteor.logs');
-    }
-  },
-  'post.default.reconfig'(api) {
-    if (meteorEnabled(api)) {
-      return api.runCommand('meteor.envconfig')
-        .then(() => api.runCommand('meteor.start'));
-    }
-  },
-  'post.default.restart'(api) {
-    if (meteorEnabled(api)) {
-      return api.runCommand('meteor.restart');
-    }
-  }
+  };
+}
+
+export const hooks = {
+  'post.default.setup': onlyMeteorEnabled('meteor.setup'),
+  'post.default.deploy': onlyMeteorEnabled('meteor.deploy'),
+  'post.default.start': onlyMeteorEnabled('meteor.start'),
+  'post.default.stop': onlyMeteorEnabled('meteor.stop'),
+  'post.default.logs': onlyMeteorEnabled('meteor.logs'),
+  'post.default.reconfig': onlyMeteorEnabled('meteor.envconfig', 'meteor.start'),
+  'post.default.restart': onlyMeteorEnabled('meteor.restart'),
+  'post.default.status': onlyMeteorEnabled('meteor.status')
 };
 
 export function scrubConfig(config, utils) {
@@ -82,8 +82,9 @@ export function scrubConfig(config, utils) {
   }
 
   if (config.app) {
-    config.app = traverse(config.app).map(function() {
-      let path = this.path.join('.');
+    // eslint-disable-next-line
+    config.app = traverse(config.app).map(function () {
+      const path = this.path.join('.');
 
       switch (path) {
         case 'name':
@@ -96,7 +97,8 @@ export function scrubConfig(config, utils) {
 
         case 'env.MONGO_URL':
           if (config.mongo) {
-            let url = this.node.split('/');
+            const url = this.node.split('/');
+
             url.pop();
             url.push('my-app');
 
@@ -104,9 +106,25 @@ export function scrubConfig(config, utils) {
           }
 
           return this.update(utils.scrubUrl(this.node));
+
+        // no default
       }
     });
   }
 
   return config;
+}
+
+export function swarmOptions(config) {
+  if (config && config.app && config.app.type === 'meteor') {
+    const label = {
+      name: `mup-app-${config.app.name}`,
+      value: 'true',
+      servers: Object.keys(config.app.servers)
+    };
+
+    return {
+      labels: [label]
+    };
+  }
 }

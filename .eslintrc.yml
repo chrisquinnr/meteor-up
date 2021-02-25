@@ -1,5 +1,7 @@
 ---
 parser: babel-eslint
+extends:
+  - es/2015/server
 plugins:
 - babel
 - markdown
@@ -8,6 +10,7 @@ env:
   node: true
   mocha: true
 parserOptions:
+  sourceType: 'module'
   ecmaVersion: 2017
   ecmaFeatures:
     accessor-pairs: 2
@@ -42,22 +45,20 @@ rules:
   array-bracket-spacing:
   - 2
   - never
-  arrow-spacing: 2
-  block-scoped-var: 0
+  block-scoped-var: 2
   brace-style:
   - 2
   - 1tbs
   - allowSingleLine: true
-  callback-return: 2
   camelcase:
   - 2
   - properties: always
-  comma-dangle: 2
+  comma-dangle: [2, 'never']
   comma-spacing: 0
   comma-style:
   - 2
   - last
-  complexity: [1, 6]
+  complexity: [1, 9]
   computed-property-spacing:
   - 2
   - never
@@ -66,18 +67,18 @@ rules:
   curly:
   - 2
   - all
-  default-case: 0
+  default-case: 2
   dot-location:
   - 2
   - property
-  dot-notation: 0
+  dot-notation: 2
   eol-last: 2
   eqeqeq: 2
   func-names: 0
   func-style: 0
   global-require: 2
   generator-star-spacing:
-  - 0
+  - 2
   - before: true
     after: false
   guard-for-in: 2
@@ -102,7 +103,8 @@ rules:
   max-depth: 0
   max-len:
   - 2
-  - ignoreStrings: true
+  - ignoreTemplateLiterals: true
+    ignoreStrings: true
   max-nested-callbacks: 0
   max-params: 0
   max-statements: 0
@@ -132,13 +134,13 @@ rules:
   no-empty: 2
   no-empty-pattern: 2
   no-empty-character-class: 2
-  no-eq-null: 0
+  no-eq-null: 2
   no-eval: 2
   no-ex-assign: 2
   no-extend-native: 2
   no-extra-bind: 2
   no-extra-boolean-cast: 2
-  no-extra-parens: 0
+  no-extra-parens: [ 2, 'all', { nestedBinaryExpressions: false }]
   no-extra-semi: 2
   no-fallthrough: 2
   no-floating-decimal: 2
@@ -154,7 +156,7 @@ rules:
   no-irregular-whitespace: 2
   no-iterator: 2
   no-label-var: 2
-  no-labels: 0
+  no-labels: 2
   no-lone-blocks: 2
   no-lonely-if: 2
   no-loop-func: 2
@@ -212,7 +214,7 @@ rules:
     args: after-used
   no-use-before-define: 0
   no-useless-call: 2
-  no-var: 0
+  no-var: 2
   no-void: 2
   no-warning-comments: 0
   no-with: 2
@@ -231,10 +233,10 @@ rules:
   operator-linebreak:
   - 2
   - after
-  padded-blocks: 0
-  prefer-const: 0
+  padded-blocks: [2, 'never']
+  prefer-const: 2
   prefer-reflect: 0
-  prefer-spread: 0
+  prefer-spread: 2
   quote-props:
   - 2
   - as-needed
@@ -255,6 +257,7 @@ rules:
   keyword-spacing:
   - 2
   - before: true
+    after: true
   space-before-blocks:
   - 2
   - always
@@ -284,3 +287,7 @@ rules:
   - 2
   - never
   - exceptRange: true
+  newline-per-chained-call: 0
+  class-methods-use-this: 0
+  no-empty-function: 0
+  sort-imports: [2, { memberSyntaxSortOrder: ['none', 'all', 'multiple', 'single'], ignoreCase: true  }]

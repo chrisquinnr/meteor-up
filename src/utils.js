@@ -2,10 +2,12 @@ import { Client } from 'ssh2';
 import debug from 'debug';
 import expandTilde from 'expand-tilde';
 import fs from 'fs';
+import net from 'net';
+import nodemiral from '@zodern/nodemiral';
 import path from 'path';
 import { promisify } from 'bluebird';
-import stream from 'stream';
 import readline from 'readline';
+import stream from 'stream';
 
 const log = debug('mup:utils');
 
@@ -13,17 +15,14 @@ export function addStdioHandlers(list) {
   list._taskQueue = list._taskQueue.map(task => {
     task.options = task.options || {};
 
-    task.options.onStdout = () => {
-      return data => {
-        process.stdout.write(data);
-      };
+    task.options.onStdout = () => data => {
+      process.stdout.write(data);
     };
 
-    task.options.onStderr = () => {
-      return data => {
-        process.stderr.write(data);
-      };
+    task.options.onStderr = () => data => {
+      process.stderr.write(data);
     };
+
     return task;
   });
 }
@@ -33,13 +32,24 @@ export function runTaskList(list, sessions, opts) {
     addStdioHandlers(list);
     delete opts.verbose;
   }
+
+  if (opts && opts.showDuration) {
+    list._taskQueue.forEach(task => {
+      task.options = task.options || {};
+      task.options.showDuration = true;
+    });
+    delete opts.showDuration;
+  }
+
   return new Promise((resolve, reject) => {
     list.run(sessions, opts, summaryMap => {
-      for (var host in summaryMap) {
+      for (const host in summaryMap) {
         if (summaryMap.hasOwnProperty(host)) {
           const summary = summaryMap[host];
+
           if (summary.error) {
-            let error = summary.error;
+            const error = summary.error;
+
             error.nodemiralHistory = summary.history;
             reject(error);
 
@@ -73,7 +83,8 @@ class Callback2Stream extends stream.Readable {
   _read() {
     this.reading = true;
     this.data.forEach(() => {
-      let shouldContinue = this.reading && this.push(this.data.shift());
+      const shouldContinue = this.reading && this.push(this.data.shift());
+
       if (!shouldContinue) {
         this.reading = false;
       }
@@ -81,18 +92,19 @@ class Callback2Stream extends stream.Readable {
   }
 }
 
-export function getDockerLogs(name, sessions, args) {
-  const command = 'sudo docker ' + args.join(' ') + ' ' + name + ' 2>&1';
+export function getDockerLogs(name, sessions, args, showHost = true) {
+  const command = `sudo docker ${args.join(' ')} ${name} 2>&1`;
 
   log(`getDockerLogs command: ${command}`);
 
-  let promises = sessions.map(session => {
+  const promises = sessions.map(session => {
     const input = new Callback2Stream();
-    const host = '[' + session._host + ']';
+    const host = showHost ? `[${session._host}]` : '';
     const lineSeperator = readline.createInterface({
       input,
       terminal: true
     });
+
     lineSeperator.on('line', data => {
       console.log(host + data);
     });
@@ -105,14 +117,16 @@ export function getDockerLogs(name, sessions, args) {
         process.stdout.write(host + data);
       }
     };
+
     return promisify(session.execute.bind(session))(command, options);
   });
+
   return Promise.all(promises);
 }
 
 export function createSSHOptions(server) {
-  var sshAgent = process.env.SSH_AUTH_SOCK;
-  var ssh = {
+  const sshAgent = process.env.SSH_AUTH_SOCK;
+  const ssh = {
     host: server.host,
     port: (server.opts && server.opts.port) || 22,
     username: server.username
@@ -125,106 +139,203 @@ export function createSSHOptions(server) {
   } else if (sshAgent && fs.existsSync(sshAgent)) {
     ssh.agent = sshAgent;
   }
+
   return ssh;
 }
 
-// Maybe we should create a new npm package
-// for this one. Something like 'sshelljs'.
-export function runSSHCommand(info, command) {
+function runSessionCommand(session, command) {
   return new Promise((resolve, reject) => {
+    let client;
+    let done;
+
+    // callback is called synchronously
+    session._withSshClient((_client, _done) => {
+      client = _client;
+      done = _done;
+    });
+
+    let output = '';
+
+    client.execute(
+      command,
+      {
+        onStderr: data => {
+          output += data;
+        },
+        onStdout: data => {
+          output += data;
+        }
+      },
+      (err, result) => {
+        // eslint-disable-next-line callback-return
+        done();
+
+        if (err) {
+          return reject(err);
+        }
+
+        resolve({
+          code: result.code,
+          output,
+          host: session._host
+        });
+      }
+    );
+  });
+}
+
+// info can either be an object from the server object in the config
+// or it can be a nodemiral session
+export function runSSHCommand(info, command) {
+  if (info instanceof nodemiral.session) {
+    return runSessionCommand(info, command);
+  }
+
+  return new Promise((resolve, reject) => {
+    const ssh = createSSHOptions(info);
     const conn = new Client();
 
-    // TODO better if we can extract SSH agent info from original session
-    var sshAgent = process.env.SSH_AUTH_SOCK;
-    var ssh = {
-      host: info.host,
-      port: (info.opts && info.opts.port) || 22,
-      username: info.username
-    };
-
-    if (info.pem) {
-      ssh.privateKey = fs.readFileSync(resolvePath(info.pem), 'utf8');
-    } else if (info.password) {
-      ssh.password = info.password;
-    } else if (sshAgent && fs.existsSync(sshAgent)) {
-      ssh.agent = sshAgent;
-    }
     conn.connect(ssh);
 
-    conn.once('error', function(err) {
+    conn.once('error', err => {
       if (err) {
         reject(err);
       }
     });
 
     // TODO handle error events
-    conn.once('ready', function() {
-      conn.exec(command, function(err, outputStream) {
+    conn.once('ready', () => {
+      conn.exec(command, (err, outputStream) => {
         if (err) {
           conn.end();
           reject(err);
+
           return;
         }
 
         let output = '';
 
-        outputStream.on('data', function(data) {
+        outputStream.on('data', data => {
           output += data;
         });
 
-        outputStream.once('close', function(code) {
+        outputStream.stderr.on('data', data => {
+          output += data;
+        });
+
+        outputStream.once('close', code => {
           conn.end();
-          resolve({ code, output });
+          resolve({ code, output, host: info.host });
         });
       });
     });
   });
 }
 
+export function forwardPort({
+  server,
+  localAddress,
+  localPort,
+  remoteAddress,
+  remotePort,
+  onReady,
+  onError,
+  onConnection = () => {}
+}) {
+  const sshOptions = createSSHOptions(server);
+  const netServer = net.createServer(netConnection => {
+    const sshConnection = new Client();
+    sshConnection.on('ready', () => {
+      sshConnection.forwardOut(
+        localAddress,
+        localPort,
+        remoteAddress,
+        remotePort,
+        (err, sshStream) => {
+          if (err) {
+            return onError(err);
+          }
+          onConnection();
+          netConnection.pipe(sshStream);
+          sshStream.pipe(netConnection);
+        }
+      );
+    }).connect(sshOptions);
+  });
+
+  netServer.listen(localPort, localAddress, error => {
+    if (error) {
+      onError(error);
+    } else {
+      onReady();
+    }
+  });
+}
+
 export function countOccurences(needle, haystack) {
   const regex = new RegExp(needle, 'g');
   const match = haystack.match(regex) || [];
+
   return match.length;
 }
 
 export function resolvePath(...paths) {
-  let expandedPaths = paths.map(_path => {
-    return expandTilde(_path);
-  });
+  const expandedPaths = paths.map(_path => expandTilde(_path));
+
   return path.resolve(...expandedPaths);
 }
 
+/**
+ * Checks if the module not found by `require` is a certain module
+ *
+ * @param {Error} e - Error that was thrown
+ * @param {String} modulePath - path to the module to compare the error to
+ * @returns {Boolean} true if the modulePath and path in the error is the same
+ */
+export function moduleNotFoundIsPath(e, modulePath) {
+  const message = e.message.split('\n')[0];
+  const pathPosition = message.length - modulePath.length - 1;
+
+  return message.indexOf(modulePath) === pathPosition;
+}
+
+export function argvContains(argvArray, option) {
+  if (argvArray.indexOf(option) > -1) {
+    return true;
+  }
+
+  return argvArray.find(value => value.indexOf(`${option}=`) > -1);
+}
+
+export function createOption(key) {
+  if (key.length > 1) {
+    return `--${key}`;
+  }
+
+  return `-${key}`;
+}
+
 export function filterArgv(argvArray, argv, unwanted) {
-  let result = argv._.slice();
-  Object.keys(argv).forEach(_key => {
-    let add = false;
-    let key = _key;
+  const result = argv._.slice();
+
+  Object.keys(argv).forEach(key => {
+    const option = createOption(key);
+
     if (
       unwanted.indexOf(key) === -1 &&
       argv[key] !== false &&
       argv[key] !== undefined
     ) {
-      add = true;
-    }
-
-    if (key.length > 1) {
-      key = `--${key}`;
-    } else {
-      key = `-${key}`;
-    }
-
-    if (add) {
-      if (argvArray.indexOf(key) === -1) {
+      if (!argvContains(argvArray, option)) {
         return;
       }
 
-      result.push(key);
+      result.push(option);
 
-      if (typeof argv[_key] !== 'boolean') {
-        result.push(argv[_key]);
+      if (typeof argv[key] !== 'boolean') {
+        result.push(argv[key]);
       }
     }
-
   });
 
   return result;

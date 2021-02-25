@@ -1,3 +1,5 @@
+/* eslint-disable no-var */
+
 var codeBlocks = require('gfm-code-blocks');
 var fs = require('fs');
 var path = require('path');
@@ -34,6 +36,8 @@ var servers = {
 var failed = 0;
 var success = 0;
 
+process.env.MUP_SKIP_UPDATE_CHECK = 'true';
+
 validConfigs.forEach(config => {
   fs.writeFileSync(tmpConfig, config.code);
   delete require.cache[require.resolve(tmpConfig)];
@@ -41,7 +45,7 @@ validConfigs.forEach(config => {
 
   configObject.servers = configObject.servers || servers;
 
-  fs.writeFileSync(tmpConfig, 'module.exports = ' + JSON.stringify(configObject));
+  fs.writeFileSync(tmpConfig, `module.exports = ${JSON.stringify(configObject)}`);
   sh.cd(tmpPath);
   var out = sh.exec('node ../../index.js validate');
 
