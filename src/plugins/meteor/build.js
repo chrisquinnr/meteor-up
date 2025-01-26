@@ -38,7 +38,7 @@ export default function buildApp(appPath, buildOptions, verbose, api) {
       }
       resolve();
     };
-    buildMeteorApp(appPath, buildOptions, verbose, code => {
+    buildMeteorApp(appPath, buildOptions, code => {
       if (code === 0) {
         callback();
 
@@ -50,9 +50,8 @@ export default function buildApp(appPath, buildOptions, verbose, api) {
   });
 }
 
-function buildMeteorApp(appPath, buildOptions, verbose, callback) {
-  let executable = buildOptions.executable || 'meteor';
-  let args = [
+function createBuildArgs(buildOptions, appPath) {
+  const args = [
     'build',
     '--directory',
     buildOptions.buildLocation,
@@ -85,9 +84,16 @@ function buildMeteorApp(appPath, buildOptions, verbose, callback) {
     args.push('--allow-incompatible-update');
   }
 
+  return args;
+}
+
+function buildMeteorApp(appPath, buildOptions, callback) {
+  let executable = buildOptions.executable || 'meteor';
+  let args = createBuildArgs(buildOptions, appPath);
+
   const isWin = /^win/.test(process.platform);
   if (isWin) {
-    // Sometimes cmd.exe not available in the path
+    // Sometimes cmd.exe is not available in the path
     // See: http://goo.gl/ADmzoD
     args = ['/c', executable].concat(args);
     executable = process.env.comspec || 'cmd.exe';
@@ -135,5 +141,29 @@ export function archiveApp(buildLocation, api, cb) {
     }
 
     cb(err);
+  });
+}
+
+export function cleanBuildDir(buildLocation) {
+  return new Promise((resolve, reject) => {
+    // fs.rm was added in Node 14.14
+    // Cleaning the build dir is a precaution (Meteor should already
+    // be deleting it), so we aren't too concerned about not doing it on old
+    // node versions
+    if (!fs.rm) {
+      return resolve(false);
+    }
+
+    fs.rm(buildLocation, {
+      recursive: true,
+      maxRetries: 10,
+      force: true
+    }, err => {
+      if (err) {
+        return reject(err);
+      }
+
+      return resolve(true);
+    });
   });
 }

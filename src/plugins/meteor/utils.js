@@ -1,3 +1,4 @@
+import * as uuid from 'uuid';
 import { cloneDeep, flatMap } from 'lodash';
 import fs from 'fs';
 import os from 'os';
@@ -7,7 +8,6 @@ import {
 import random from 'random-seed';
 import { spawn } from 'child_process';
 import tar from 'tar';
-import uuid from 'uuid';
 
 export function checkAppStarted(list, api) {
   const script = api.resolvePath(__dirname, 'assets/meteor-deploy-check.sh');
@@ -184,21 +184,9 @@ export function runCommand(_executable, _args, { cwd, stdin } = {}) {
   });
 }
 
-export function getBuildOptions(api) {
-  const config = api.getConfig().app;
-  const appPath = api.resolvePath(api.getBasePath(), config.path);
-
-  const buildOptions = config.buildOptions || {};
-
-  buildOptions.buildLocation =
-    buildOptions.buildLocation || tmpBuildPath(appPath, api);
-
-  return buildOptions;
-}
-
 export function shouldRebuild(api) {
   let rebuild = true;
-  const { buildLocation } = getBuildOptions(api);
+  const { buildLocation } = api.getConfig().app.buildOptions;
   const bundlePath = api.resolvePath(buildLocation, 'bundle.tar.gz');
 
   if (api.getOptions()['cached-build']) {

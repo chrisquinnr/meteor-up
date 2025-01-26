@@ -23,6 +23,14 @@ export function swarmOptions(config) {
   }
 }
 
+export function prepareConfig(config) {
+  if (!config.privateDockerRegistry) {
+    return;
+  }
+
+  return config;
+}
+
 export function scrubConfig(config) {
   if (!config.privateDockerRegistry) {
     return config;

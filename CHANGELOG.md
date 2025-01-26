@@ -1,3 +1,70 @@
+## 1.5.11 - October 21, 2024
+
+- Node 8 is no longer supported. The minimum node version is 10.16
+- Fix issues with deploying in Node 20.10 and newer
+- Fix some ssh issues
+- Add support for MongodB 6 and newer (@bessw)
+- Add `mongo.dataPath` option
+- When there is a connection issue with SSH, the error now includes the hostname of the server
+- Fix running `mup proxy reconfig-shared` when shared nginx config is not configured
+
+## 1.5.10 - January 25, 2022
+
+- Support relative paths for proxy.shared.nginxConfig (@sitiarel)
+
+## 1.5.9 - June 27, 2022
+
+- Update @zodern/nodemiral
+
+## 1.5.8 - April 20, 2022
+
+- Update nginx
+- Improve output from prepare bundle when it fails
+- Update docs to refer to `app` instead of the deprecated `meteor` object (@maxmatthews)
+- Fix description of mup-cloud-front plugin (@cunneen)
+- Update default mongo version to 3.4.24 from 3.4.1
+- Update deps
+
+
+## 1.5.7 - February 13, 2022
+
+- Update mongo version in config created by `mup init`
+- Fix initializing Mongo replica set
+
+## 1.5.6 - February 13, 2022
+
+- Fix connecting to built-in MongoDB with Meteor 1.6. The replica set now uses `mongodb:27017` as the member's hostname instead of `127.0.0.1:27017`
+
+## 1.5.5 - September 30, 2021
+
+- Config created by `mup init` now uses `zodern/meteor:root` as docker image
+- Update docs for Meteor support
+- Fix default docker registry host when using private docker registery
+- Avoid race condition when `app.docker.prepareBundleLocally` is enabled and logging into private docker registry
+
+## 1.5.4 - September 19, 2021
+
+- Increase worker_connections in nginx (@markdowney)
+- When setting `config.privateDockerRegistry`, the host option is now optional and defaults to the docker hub registry
+- Moved Prepare Bundle and Push Bundle to separate tasks. This will allow creating hooks that run between those two steps
+- Before building the app, it now deletes the previous build. This should fix the very rare situations where mup deployed the previous build. This can be disabled by setting the `app.buildOptions.cleanBuildLocation` option to false
+- Fix `mup status` when the config does not have a servers object
+- Reduced unnecessary output in the deploy check script
+- Mup now sets `config.app.buildOptions.buildLocation` to the default value while preparing the mup config, making the build location available to other plugins and hooks. You can also see the build location by running `mup validate --show`
+- Fix `mup meteor status` when mup uses a non-root user on the server
+
+**Prepare Bundle Locally**
+
+Mup can build the docker image locally instead of on the remote server, which can be faster and avoids taking resources away from anything else running on the servers. This version has some fixes and performance improvements:
+
+- When preparing the bundle locally, mup will try to use the docker registry api to change image tags instead of the much slower method of pulling and pushing the images
+- Fix getting node version when `app.docker.prepareBundleLocally` is enabled (@Floriferous)
+- Fix creating dockerignore file while building bundle locally. This should make building the docker image much faster
+
+**Plugin API**
+
+- `prepareConfig` is now passed an instance of the plugin api as the second argument
+
 ## 1.5.3 - December 8, 2020
 
 - Fix getting node version when `app.docker.prepareBundleLocally` is enabled
